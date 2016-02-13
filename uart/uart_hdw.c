@@ -27,7 +27,7 @@ uint8_t hdwIsBusyUART() {
 /**
  * Interrupt driven design does not need to wait
  */
-#if INTERRUPT_DRIVEN
+#if (INTERRUPT_DRIVEN && USE_QUEUE)
 
 /**
  * Transmit data directly on the hardware

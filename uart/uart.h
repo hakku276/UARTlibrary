@@ -13,68 +13,72 @@
 #include "config.h"
 #include "uart_hdw.h"
 
-#if (USE_QUEUE)
-#include "../utils/Queue.h"
-
 #if (INTERRUPT_DRIVEN)
 #include <avr/interrupt.h>
 #endif
 
+#if USE_QUEUE
+#include "../utils/Queue.h"
+
 #if COMMAND_RESPONSE_MODEL
 #include "../commands.h"
 
-#if (!(defined(COM_END) && defined(COM_WAIT)))
+//check settings for command response model
+#if !(defined(COM_END) && defined(COM_WAIT))
 #error 'Required Commands not defined for Command Oriented Communication'
 #endif
 
 #endif
-
-#endif
-
-
-/**
- * Requires a message handler if COMMAND RESPONSE MODEL has been implemented
- */
-#if COMMAND_RESPONSE_MODEL
-
-/**
- * Resumes the current transmission queue
- */
-void UARTresumeTransmission();
-
-/**
- * Pauses the Current transmission queue
- */
-void UARTholdTransmit();
-
-/**
- * simple UART setup
- */
-void UARTsetup(void (*messageHandler)(uint8_t));
-
-/**
- * Advanced UART setup
- */
-void advancedUARTsetup(void (*messageHandler)(uint8_t));
-
 #else
 
+//not using queue so command response model is not valid
+#if COMMAND_RESPONSE_MODEL
+//command response model used without using queue
+#error 'Invalid Setting (Queue: 0 and CommandModel: 1)'
+#endif
+
+#endif
+
+
 /**
  * simple UART setup
  */
-void UARTsetup();
+void UARTsetup(
+#if COMMAND_RESPONSE_MODEL
+		void (*messageHandler)(uint8_t)
+#endif
+#if (INTERRUPT_DRIVEN && (!USE_QUEUE))
+		void (*rxcCompleteHandler)(uint8_t),
+		void (*txcCompleteHandler)()
+#endif
+#if (INTERRUPT_DRIVEN && (USE_QUEUE && (!COMMAND_RESPONSE_MODEL)))
+		void (*rxcQueueFullHandler)(),
+		void (*txcCompleteHandler)()
+#endif
+		);
 
 /**
  * Advanced UART setup
  */
-void advancedUARTsetup();
-
+void advancedUARTsetup(
+#if COMMAND_RESPONSE_MODEL
+		void (*messageHandler)(uint8_t)
 #endif
+#if (INTERRUPT_DRIVEN && (!USE_QUEUE))
+		void (*rxcCompleteHandler)(uint8_t),
+		void (*txcCompleteHandler)()
+#endif
+#if (INTERRUPT_DRIVEN && (USE_QUEUE && (!COMMAND_RESPONSE_MODEL)))
+		void (*rxcQueueFullHandler)(),
+		void (*txcCompleteHandler)()
+#endif
+		);
 
 /**
- * Initiate transmission the data from the queue.
+ * Check whether UART is busy or not. a software implementation
+ * returns a uint8_t value that represents both transmit and receive business
  */
-void UARTbeginTransmit();
+uint8_t UARTstatus();
 
 /**
  * Transmit data (enqueue to buffer or direct) according to use cases
@@ -87,23 +91,41 @@ uint8_t UARTtransmit(uint8_t);
  */
 uint8_t UARTreceive();
 
-/**
- * Check whether UART is busy or not. a software implementation
- * returns a uint8_t value that represents both transmit and receive business
- */
-uint8_t UARTstatus();
+#if USE_QUEUE
 
 /**
- * Bulk Transmit data into the stream.
- * start denotes the start point of the array
- * length denotes the number of data bytes to transmit
+ * Initiate transmission the data from the queue.
  */
-uint8_t UARTbulkTransmit(uint8_t* data, uint8_t start, uint8_t length);
+void UARTbeginTransmit();
 
 /**
  * Builds the queue but does not transmit.
  * Returns whether the data was written or not
  */
 uint8_t UARTbuildCommandQueue(uint8_t data);
+
+/**
+ * Bulk Transmit data into the stream.
+ * start denotes the start point of the array
+ * length denotes the number of data bytes to transmit
+ * TODO make this common
+ */
+uint8_t UARTbulkTransmit(uint8_t* data, uint8_t start, uint8_t length);
+
+#endif
+
+#if COMMAND_RESPONSE_MODEL
+
+/**
+ * Resumes the current transmission queue
+ */
+void UARTresumeTransmission();
+
+/**
+ * Pauses the Current transmission queue
+ */
+void UARTholdTransmit();
+
+#endif
 
 #endif /* UART_H_ */

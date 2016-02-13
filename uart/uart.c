@@ -23,6 +23,18 @@ void (*handler)(uint8_t);
 #endif
 
 /**
+ * Require callbacks if not using queues
+ */
+#if (INTERRUPT_DRIVEN && (!USE_QUEUE))
+		void (*rxcHandler)(uint8_t);
+		void (*txcHandler)();
+#endif
+#if (INTERRUPT_DRIVEN && (USE_QUEUE && (!COMMAND_RESPONSE_MODEL)))
+		void (*rxcHandler)();
+		void (*txcHandler)();
+#endif
+
+/**
  * Simple UART Setup:
  * baud rate : BAUD_RATE
  * Parity: Disabled
@@ -32,6 +44,14 @@ void (*handler)(uint8_t);
 void UARTsetup(
 #if COMMAND_RESPONSE_MODEL
 		void (*messageHandler)(uint8_t)
+#endif
+#if (INTERRUPT_DRIVEN && (!USE_QUEUE))
+		void (*rxcCompleteHandler)(uint8_t),
+		void (*txcCompleteHandler)()
+#endif
+#if (INTERRUPT_DRIVEN && (USE_QUEUE && (!COMMAND_RESPONSE_MODEL)))
+		void (*rxcQueueFullHandler)(),
+		void (*txcCompleteHandler)()
 #endif
 		) {
 	//setup Baud rate
@@ -58,12 +78,22 @@ void UARTsetup(
 	handler = messageHandler;
 #endif
 
+#endif
 	//enable interrupt driven architecture if required
 #if INTERRUPT_DRIVEN
 	//enable interrupt
 	UCSRB |= 1 << RXCIE | 1 << TXCIE;
 #endif
 
+	//enable callback methods if there is interrupt enabled but not queuing is used
+	//or if queue is used but not command response model
+#if (INTERRUPT_DRIVEN && (!USE_QUEUE))
+	rxcHandler = rxcCompleteHandler;
+	txcHandler = txcCompleteHandler;
+#endif
+#if (INTERRUPT_DRIVEN && (USE_QUEUE && (!COMMAND_RESPONSE_MODEL)))
+	rxcHandler = rxcQueueFullHandler;
+	txcHandler = txcCompleteHandler;
 #endif
 }
 
@@ -74,14 +104,17 @@ void advancedUARTsetup(
 #if COMMAND_RESPONSE_MODEL
 		void (*messageHandler)(uint8_t)
 #endif
+#if (INTERRUPT_DRIVEN && (!USE_QUEUE))
+		void (*rxcCompleteHandler)(uint8_t),
+		void (*txcCompleteHandler)()
+#endif
+#if (INTERRUPT_DRIVEN && (USE_QUEUE && (!COMMAND_RESPONSE_MODEL)))
+		void (*rxcCompleteHandler)(),
+		void (*txcCompleteHandler)()
+#endif
 		) {
 	//TODO implement this
 }
-
-/**
- * The following code base is implemented if a Queue is to be implemented
- */
-#if (USE_QUEUE)
 
 /**
  * Check if the UART is busy (Software implementation)
@@ -89,37 +122,37 @@ void advancedUARTsetup(
  */
 uint8_t UARTstatus() {
 	uint8_t result = 0;
+
+	//check hardware status
 	result = hdwIsBusyUART();
-	//now check software status
+
+#if USE_QUEUE
+
+	//now check queue status
+	//check tx queue is empty or full
 	if (txQueue.count == 0) {
 		result |= TX_QUEUE_EMPTY;
 	} else if (txQueue.size == txQueue.count) {
 		result |= TX_QUEUE_FULL;
 	}
+
+	//check rx queue is empty or full
 	if (rxQueue.count == 0) {
 		result |= RX_QUEUE_EMPTY;
 	} else if (rxQueue.size == rxQueue.count) {
-		//rx queue is full
 		result |= RX_QUEUE_FULL;
 	}
-	return result;
-}
 
-/**
- * Initiate transmission the data from the queue.
- */
-void UARTbeginTransmit(){
-	uint8_t status = UARTstatus();
-	if((!(status&TX_BUSY)) && (txQueue.count != 0)){
-		//the transmitter is not busy and there is data to be transmitted
-		hdwTransmitUART(dequeue(&txQueue));
-	}
+#endif
+
+	return result;
 }
 
 /**
  * Enqueues a byte of data for transmission into the UART stream
  */
 uint8_t UARTtransmit(uint8_t data) {
+#if USE_QUEUE
 	uint8_t uartStatus = UARTstatus();
 	if (!(uartStatus & TX_QUEUE_FULL)) {
 		//tx queue is not full
@@ -133,6 +166,10 @@ uint8_t UARTtransmit(uint8_t data) {
 	}
 	//to denote that 0 bytes were enqueued for writing
 	return 0;
+#else
+	hdwTransmitUART(data);
+	return 1;
+#endif
 }
 
 /**
@@ -141,8 +178,118 @@ uint8_t UARTtransmit(uint8_t data) {
  * Use: UARTisBusy();
  */
 uint8_t UARTreceive() {
+#if USE_QUEUE
 	return dequeue(&rxQueue);
+#else
+	return hdwReceiveUART();
+#endif
 }
+
+/**
+ * ------------------------------------------------------
+ * Interrupt Service Routine for UART reception complete
+ * ------------------------------------------------------
+ */
+#if INTERRUPT_DRIVEN
+
+/**
+ * Global Variables required for UART
+ */
+#if COMMAND_RESPONSE_MODEL
+/**
+ * Holds a standard UART command that will be taken into consideration before the next transmission
+ */
+uint8_t uartChainCommand;
+#endif
+
+ISR(USART_RXC_vect) {
+
+	//read the received data even though it might be lost
+	uint8_t data = hdwReceiveUART();
+
+#if USE_QUEUE
+
+	uint8_t uartStatus = UARTstatus();
+
+	//using queue so enqueue into queue
+	if (!(uartStatus & RX_QUEUE_FULL)) {
+
+		//enqueue data in every case
+		enqueue(&rxQueue, data);
+#if (!COMMAND_RESPONSE_MODEL)
+		//command response mode is not implemented  but queue is used
+		//so notify the user program that the queue is full
+		uartStatus = UARTstatus();
+		if(uartStatus & RX_QUEUE_FULL){
+			(*rxcHandler)();
+		}
+#endif
+
+		//if this is command response model check for command endpoints
+#if COMMAND_RESPONSE_MODEL
+		if(data == COM_END){
+			//the command ended!!!
+			(*handler)(dequeue(&rxQueue));
+		}
+#endif
+	}
+#if COMMAND_RESPONSE_MODEL
+	else {
+		//RX queue is full transmit WAIT command
+		//try and transmit it until successful
+		//enable interrupt so that transmission can occur as planned
+		//first read data from UDR so as to clear RXC flag
+		//TODO if the input was end of command transmit wait but process data
+		sei();
+		while (!(UARTtransmit(COM_WAIT) == 1))
+			;
+	}
+#endif
+#else
+	// not using queue
+	(*rxcHandler)(data);
+#endif
+}
+
+/**
+ * Interrupt Service Routine for UART Data transmission complete
+ */
+ISR(USART_TXC_vect) {
+	//enable interrupt for Data Register Empty
+#if COMMAND_RESPONSE_MODEL
+	if(uartChainCommand != COM_WAIT){
+		//if the communication stream has not sent wait signal
+#endif
+		UCSRB |= 1 << UDRIE;
+#if COMMAND_RESPONSE_MODEL
+	}
+#endif
+}
+
+/**
+ * Interrupt Service Routine for UDRE. write data only if the UDR is ready to receive data
+ */
+ISR(USART_UDRE_vect) {
+#if USE_QUEUE
+	uint8_t uartStatus = UARTstatus();
+	//using queue so dequeue from queue
+	if (!(uartStatus & TX_QUEUE_EMPTY)) {
+		//there is data remaining to be transmitted
+		hdwTransmitUART(dequeue(&txQueue));
+	}
+#else
+	//not using queue so notify user that the rxc was completed
+	(*txcHandler)();
+#endif
+	//disable UDR empty interrupt
+	UCSRB &= ~(1 << UDRIE);
+}
+#endif
+
+/**
+ * The following code base is implemented if a Queue is to be implemented
+ */
+#if (USE_QUEUE)
 
 /**
  * Bulk transmit data into UART stream
@@ -169,6 +316,17 @@ uint8_t UARTbulkTransmit(uint8_t* data, uint8_t start, uint8_t length) {
 }
 
 /**
+ * Initiate transmission the data from the queue.
+ */
+void UARTbeginTransmit(){
+	uint8_t status = UARTstatus();
+	if((!(status&TX_BUSY)) && (txQueue.count != 0)){
+		//the transmitter is not busy and there is data to be transmitted
+		hdwTransmitUART(dequeue(&txQueue));
+	}
+}
+
+/**
  * Builds the queue but does not transmit.
  * Returns whether the data was written or not
  */
@@ -181,28 +339,6 @@ uint8_t UARTbuildCommandQueue(uint8_t data){
 	return 0;
 }
 
-/**
- * Interrupt Driven Architecture
- */
-#if INTERRUPT_DRIVEN
-
-/**
- * Holds a standard UART command that will be taken into consideration before the next transmission
- */
-uint8_t uartChainCommand;
-
-/**
- * Incoming and Outgoing command number
- */
-uint8_t incBlockNum, outBlockNum;
-
-void UARTholdTransmit(){
-	uartChainCommand = COM_WAIT;
-}
-
-void UARTresumeTransmission(){
-	UARTbeginTransmit();
-}
 
 /**
  * Command Response Model should use a default message handler
@@ -219,97 +355,16 @@ void UARTresumeTransmission(){
  */
 uint8_t processStatus;
 
+void UARTholdTransmit(){
+	uartChainCommand = COM_WAIT;
+}
+
+void UARTresumeTransmission(){
+	UARTbeginTransmit();
+}
+
 #endif
 
 #endif
 
-/**
- * Interrupt Service Routine for UART reception complete
- */
-ISR(USART_RXC_vect) {
-	uint8_t uartStatus = UARTstatus();
-	if (!(uartStatus & RX_QUEUE_FULL)) {
-		//UARTqueue is not full
-		uint8_t data = hdwReceiveUART();
-		//enqueue data in every case
-		enqueue(&rxQueue, data);
-		//if this is command response model check for command endpoints
-#if COMMAND_RESPONSE_MODEL
-		if(data == COM_END){
-			//the command ended!!!
-			(*handler)(dequeue(&rxQueue));
-		}
-#endif
-	}
-#if COMMAND_RESPONSE_MODEL
-	else {
-		//RX queue is full transmit WAIT command
-		//try and transmit it until successful
-		//enable interrupt so that transmission can occur as planned
-		//first read data from UDR so as to clear RXC flag
-		//TODO if the input was end of command transmit wait but process data
-		hdwReceiveUART();
-		sei();
-		while (!(UARTtransmit(COM_WAIT) == 1))
-			;
-	}
-#endif
-}
-
-/**
- * Interrupt Service Routine for UART Data transmission complete
- */
-ISR(USART_TXC_vect) {
-	//enable interrupt for Data Register Empty
-	if(uartChainCommand != COM_WAIT){
-		//if the communication stream has not sent wait signal
-		UCSRB |= 1 << UDRIE;
-	}
-}
-
-/**
- * Interrupt Service Routine for UDRE. write data only if the UDR is ready to receive data
- */
-ISR(USART_UDRE_vect) {
-	uint8_t uartStatus = UARTstatus();
-	if (!(uartStatus & TX_QUEUE_EMPTY)) {
-		//there is data remaining to be transmitted
-		hdwTransmitUART(dequeue(&txQueue));
-	}
-	//disable UDR empty interrupt
-	UCSRB &= ~(1 << UDRIE);
-}
-
-/**
- * Interrupt not to be used but Queuing should be implemented
- */
-#else
-//TODO implement non interrupted queuing
-#endif
-
-/**
- * Not using UART Queue
- */
-#else
-/**
- * Checks whether the UART is busy or not
- */
-uint8_t UARTstatus() {
-	return hdwIsBusyUART();
-}
-
-/**
- * Transmits a byte of data into the data stream
- */
-void UARTtransmit(uint8_t data) {
-	hdwTransmitUART(data);
-}
-
-/**
- * Receives a byte of data from the data stream
- * waits until the data is available
- */
-uint8_t UARTreceive(void) {
-	return hdwReceiveUART();
-}
 #endif

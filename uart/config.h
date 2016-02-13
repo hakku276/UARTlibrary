@@ -9,6 +9,12 @@
 #define CONFIG_H_
 
 /**
+ * ------------------------------------------
+ * Queue Related Settings
+ * ------------------------------------------
+ */
+
+/**
  * Define whether the queues created should be of equal length
  * 0 - Queues have different length
  * 1 - Queues have same length
@@ -16,7 +22,28 @@
 #define SYMMETRIC_QUEUE 1
 
 /**
- * Define whether the queuing system should be used or not
+ * If the queue is supposed to be equal for every type, then define the queue size.
+ */
+#if(SYMMETRIC_QUEUE)
+#define QUEUE_SIZE 10
+#endif
+
+/**
+ * ------------------------------------
+ * UART Communication related settings
+ * ------------------------------------
+ */
+
+//Constant Values
+#define BAUD_RATE 9600U
+
+/**
+ * Allow the master or slave to request a repeat
+ */
+#define ALLOW_REPEAT_REQUESTS 0
+
+/**
+ * Define whether the queuing system should be used or not for communication
  */
 #define USE_QUEUE 1
 
@@ -31,7 +58,7 @@
  * The commands are specified in "commands.h" in the root folder and must specify some
  * specific constants.
  */
-#define COMMAND_RESPONSE_MODEL 1
+#define COMMAND_RESPONSE_MODEL 0
 
 /**
  * ONLY SLAVE SUPPORTED TILL NOW
@@ -40,26 +67,16 @@
 #define MODE_SLAVE 1
 
 /**
- * If the queue is supposed to be equal for every type, then define the queue size.
+ * -------------------------------------------------------------------------
+ * DO NOT MODIFY ANYTHING BELOW THIS IF YOU ARE UNCERTAIN ABOUT THE RESULTS.
+ * -------------------------------------------------------------------------
  */
-#if(SYMMETRIC_QUEUE)
-#define QUEUE_SIZE 10
-#endif
-
-//Communication settings
-#define BAUD_RATE 9600U
 
 #if (!defined(BAUD_RATE))
 #error 'BAUD Rate should be defined'
 #else
 #define UBRR_VAL (uint16_t)((F_CPU/16)/BAUD_RATE-1)
 #endif
-
-/**
- * -------------------------------------------------------------------------
- * DO NOT MODIFY ANYTHING BELOW THIS IF YOU ARE UNCERTAIN ABOUT THE RESULTS.
- * -------------------------------------------------------------------------
- */
 
 /**
  * The hardware transmitter cannot accept anything now

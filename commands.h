@@ -17,9 +17,10 @@
 /**
  * Verifies whether the byte is a custom command code or not
  */
-uint8_t isCustomCommand(uint8_t data){
+/*
+uint8_t isCustomCommand(uint8_t data) {
 	return 0x00;
-}
+}*/
 
 /**
  * ---------------------------
@@ -33,14 +34,16 @@ uint8_t isCustomCommand(uint8_t data){
 /**
  * Verifies whether the byte is a standard command code or not
  */
+/*
 uint8_t isStandardCommand(uint8_t data) {
 	return ((data == COM_WAIT) || (data == COM_END) || (data == COM_ESCAPE_CHAR));
-}
+}*/
 
 /**
  * Verifies whether the byte is a command code or not
  */
-uint8_t isCommandCode(uint8_t data){
+/*
+uint8_t isCommandCode(uint8_t data) {
 	return (isCustomCommand(data) || isStandardCommand(data));
-}
+}*/
 #endif /* COMMANDS_H_ */
