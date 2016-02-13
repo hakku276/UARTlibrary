@@ -73,10 +73,10 @@ uint8_t dequeue(struct Queue* queue){
 }
 
 
-uint8_t peekQueueTail(struct Queue* queue){
+inline uint8_t peekQueueTail(struct Queue* queue){
 	return queue->buffer[queue->tail];
 }
 
-uint8_t peekQueueHead(struct Queue* queue){
+inline uint8_t peekQueueHead(struct Queue* queue){
 	return queue->buffer[queue->head];
 }

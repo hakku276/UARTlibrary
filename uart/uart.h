@@ -37,17 +37,25 @@
  */
 #if COMMAND_RESPONSE_MODEL
 
+/**
+ * Resumes the current transmission queue
+ */
+void UARTresumeTransmission();
+
+/**
+ * Pauses the Current transmission queue
+ */
 void UARTholdTransmit();
 
 /**
  * simple UART setup
  */
-void UARTsetup(void*(*messageHandler)(uint8_t));
+void UARTsetup(void (*messageHandler)(uint8_t));
 
 /**
  * Advanced UART setup
  */
-void advancedUARTsetup(void*(*messageHandler)(uint8_t));
+void advancedUARTsetup(void (*messageHandler)(uint8_t));
 
 #else
 
@@ -62,6 +70,11 @@ void UARTsetup();
 void advancedUARTsetup();
 
 #endif
+
+/**
+ * Initiate transmission the data from the queue.
+ */
+void UARTbeginTransmit();
 
 /**
  * Transmit data (enqueue to buffer or direct) according to use cases
@@ -86,5 +99,11 @@ uint8_t UARTstatus();
  * length denotes the number of data bytes to transmit
  */
 uint8_t UARTbulkTransmit(uint8_t* data, uint8_t start, uint8_t length);
+
+/**
+ * Builds the queue but does not transmit.
+ * Returns whether the data was written or not
+ */
+uint8_t UARTbuildCommandQueue(uint8_t data);
 
 #endif /* UART_H_ */

@@ -17,7 +17,7 @@ Queue rxQueue, txQueue;
  * ptr = &function;
  * (*ptr)();
  */
-void *(*handler)(uint8_t);
+void (*handler)(uint8_t);
 #endif
 
 #endif
@@ -31,7 +31,7 @@ void *(*handler)(uint8_t);
  */
 void UARTsetup(
 #if COMMAND_RESPONSE_MODEL
-		void *(*messageHandler)(uint8_t)
+		void (*messageHandler)(uint8_t)
 #endif
 		) {
 	//setup Baud rate
@@ -72,7 +72,7 @@ void UARTsetup(
  */
 void advancedUARTsetup(
 #if COMMAND_RESPONSE_MODEL
-		void *(*messageHandler)(uint8_t)
+		void (*messageHandler)(uint8_t)
 #endif
 		) {
 	//TODO implement this
@@ -103,6 +103,17 @@ uint8_t UARTstatus() {
 		result |= RX_QUEUE_FULL;
 	}
 	return result;
+}
+
+/**
+ * Initiate transmission the data from the queue.
+ */
+void UARTbeginTransmit(){
+	uint8_t status = UARTstatus();
+	if((!(status&TX_BUSY)) && (txQueue.count != 0)){
+		//the transmitter is not busy and there is data to be transmitted
+		hdwTransmitUART(dequeue(&txQueue));
+	}
 }
 
 /**
@@ -158,14 +169,22 @@ uint8_t UARTbulkTransmit(uint8_t* data, uint8_t start, uint8_t length) {
 }
 
 /**
+ * Builds the queue but does not transmit.
+ * Returns whether the data was written or not
+ */
+uint8_t UARTbuildCommandQueue(uint8_t data){
+	if(txQueue.count != txQueue.size){
+		//tx queue is not full
+		enqueue(&txQueue,data);
+		return 1;
+	}
+	return 0;
+}
+
+/**
  * Interrupt Driven Architecture
  */
 #if INTERRUPT_DRIVEN
-
-/**
- * Command Response Model should use a default message handler
- */
-#if COMMAND_RESPONSE_MODEL
 
 /**
  * Holds a standard UART command that will be taken into consideration before the next transmission
@@ -179,9 +198,16 @@ uint8_t incBlockNum, outBlockNum;
 
 void UARTholdTransmit(){
 	uartChainCommand = COM_WAIT;
-	UARTprocessStatusNotification(PROC_STATUS_COMPLETED);
 }
 
+void UARTresumeTransmission(){
+	UARTbeginTransmit();
+}
+
+/**
+ * Command Response Model should use a default message handler
+ */
+#if COMMAND_RESPONSE_MODEL
 
 /**
  * Master mode command controller
@@ -207,10 +233,13 @@ ISR(USART_RXC_vect) {
 		uint8_t data = hdwReceiveUART();
 		//enqueue data in every case
 		enqueue(&rxQueue, data);
-		//if the command has ended process it
-		if(data != COM_END){
-			//TODO implement this
+		//if this is command response model check for command endpoints
+#if COMMAND_RESPONSE_MODEL
+		if(data == COM_END){
+			//the command ended!!!
+			(*handler)(dequeue(&rxQueue));
 		}
+#endif
 	}
 #if COMMAND_RESPONSE_MODEL
 	else {
