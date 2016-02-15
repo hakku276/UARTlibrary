@@ -6,6 +6,10 @@
  */
 #include "uart.h"
 
+#if COMMAND_RESPONSE_MODEL
+#include "../commands.h"
+#endif
+
 #if USE_QUEUE
 typedef struct Queue Queue;
 Queue rxQueue, txQueue;
@@ -17,7 +21,7 @@ Queue rxQueue, txQueue;
  * ptr = &function;
  * (*ptr)();
  */
-void (*handler)(uint8_t);
+void (*handler)(struct Command*);
 #endif
 
 #endif
@@ -26,12 +30,12 @@ void (*handler)(uint8_t);
  * Require callbacks if not using queues
  */
 #if (INTERRUPT_DRIVEN && (!USE_QUEUE))
-		void (*rxcHandler)(uint8_t);
-		void (*txcHandler)();
+void (*rxcHandler)(uint8_t);
+void (*txcHandler)();
 #endif
 #if (INTERRUPT_DRIVEN && (USE_QUEUE && (!COMMAND_RESPONSE_MODEL)))
-		void (*rxcHandler)();
-		void (*txcHandler)();
+void (*rxcHandler)();
+void (*txcHandler)();
 #endif
 
 /**
@@ -43,7 +47,7 @@ void (*handler)(uint8_t);
  */
 void UARTsetup(
 #if COMMAND_RESPONSE_MODEL
-		void (*messageHandler)(uint8_t)
+		void (*messageHandler)(struct Command*)
 #endif
 #if (INTERRUPT_DRIVEN && (!USE_QUEUE))
 		void (*rxcCompleteHandler)(uint8_t),
@@ -102,7 +106,7 @@ void UARTsetup(
  */
 void advancedUARTsetup(
 #if COMMAND_RESPONSE_MODEL
-		void (*messageHandler)(uint8_t)
+		void (*messageHandler)(struct Command*)
 #endif
 #if (INTERRUPT_DRIVEN && (!USE_QUEUE))
 		void (*rxcCompleteHandler)(uint8_t),
@@ -185,6 +189,12 @@ uint8_t UARTreceive() {
 #endif
 }
 
+//TODO remove later
+
+uint8_t size() {
+	return rxQueue.count;
+}
+
 /**
  * ------------------------------------------------------
  * Interrupt Service Routine for UART reception complete
@@ -198,8 +208,9 @@ uint8_t UARTreceive() {
 #if COMMAND_RESPONSE_MODEL
 /**
  * Holds a standard UART command that will be taken into consideration before the next transmission
+ * TODO manage this
  */
-uint8_t uartChainCommand;
+uint8_t status;
 #endif
 
 ISR(USART_RXC_vect) {
@@ -220,16 +231,17 @@ ISR(USART_RXC_vect) {
 		//command response mode is not implemented  but queue is used
 		//so notify the user program that the queue is full
 		uartStatus = UARTstatus();
-		if(uartStatus & RX_QUEUE_FULL){
+		if(uartStatus & RX_QUEUE_FULL) {
 			(*rxcHandler)();
 		}
 #endif
 
 		//if this is command response model check for command endpoints
 #if COMMAND_RESPONSE_MODEL
-		if(data == COM_END){
-			//the command ended!!!
-			(*handler)(dequeue(&rxQueue));
+		//TODO supposition of no escape sequence key
+		if (data == COM_END) {
+			//the command ended invoke the standard message handler
+			standardMessageHandler();
 		}
 #endif
 	}
@@ -239,10 +251,13 @@ ISR(USART_RXC_vect) {
 		//try and transmit it until successful
 		//enable interrupt so that transmission can occur as planned
 		//first read data from UDR so as to clear RXC flag
-		//TODO if the input was end of command transmit wait but process data
-		sei();
+		//TODO manage resume functionality as well
 		while (!(UARTtransmit(COM_WAIT) == 1))
 			;
+		if(data == COM_END){
+			//The command has ended whatsoever
+			standardMessageHandler();
+		}
 	}
 #endif
 #else
@@ -257,7 +272,7 @@ ISR(USART_RXC_vect) {
 ISR(USART_TXC_vect) {
 	//enable interrupt for Data Register Empty
 #if COMMAND_RESPONSE_MODEL
-	if(uartChainCommand != COM_WAIT){
+	if (status != COM_WAIT) {
 		//if the communication stream has not sent wait signal
 #endif
 		UCSRB |= 1 << UDRIE;
@@ -318,9 +333,9 @@ uint8_t UARTbulkTransmit(uint8_t* data, uint8_t start, uint8_t length) {
 /**
  * Initiate transmission the data from the queue.
  */
-void UARTbeginTransmit(){
+void UARTbeginTransmit() {
 	uint8_t status = UARTstatus();
-	if((!(status&TX_BUSY)) && (txQueue.count != 0)){
+	if ((!(status & TX_BUSY)) && (txQueue.count != 0)) {
 		//the transmitter is not busy and there is data to be transmitted
 		hdwTransmitUART(dequeue(&txQueue));
 	}
@@ -330,20 +345,55 @@ void UARTbeginTransmit(){
  * Builds the queue but does not transmit.
  * Returns whether the data was written or not
  */
-uint8_t UARTbuildCommandQueue(uint8_t data){
-	if(txQueue.count != txQueue.size){
+uint8_t UARTbuildCommandQueue(uint8_t data) {
+	if (txQueue.count != txQueue.size) {
 		//tx queue is not full
-		enqueue(&txQueue,data);
+		enqueue(&txQueue, data);
 		return 1;
 	}
 	return 0;
 }
 
-
 /**
  * Command Response Model should use a default message handler
  */
 #if COMMAND_RESPONSE_MODEL
+
+/**
+ * First level standard messages handler
+ */
+void standardMessageHandler() {
+	uint8_t code = UARTreceive();
+	struct Command command;
+	switch (code) {
+	case COM_WAIT:
+		status = COM_WAIT;
+		UARTbuildCommandQueue(COM_ACK);
+		UARTbuildCommandQueue(COM_END);
+		UARTbeginTransmit();
+		break;
+	default:
+		command.commandCode = code;
+		fillData(&command);
+		(*handler)(&command);
+		break;
+	}
+}
+
+/**
+ * Fills data into the command structure from the rx queue
+ * TODO verify data integrity
+ */
+void fillData(struct Command* command){
+	uint8_t data = UARTreceive();
+	uint8_t count = 0;
+	//TODO use ESCAPE SEQUENCE
+	while((data != COM_END) && (count < COMMAND_DATA_LENGTH)){
+		command->data[count] = data;
+		data = UARTreceive();
+		count++;
+	}
+}
 
 /**
  * Master mode command controller
@@ -355,11 +405,11 @@ uint8_t UARTbuildCommandQueue(uint8_t data){
  */
 uint8_t processStatus;
 
-void UARTholdTransmit(){
-	uartChainCommand = COM_WAIT;
+void UARTholdTransmit() {
+	status = COM_WAIT;
 }
 
-void UARTresumeTransmission(){
+void UARTresumeTransmission() {
 	UARTbeginTransmit();
 }
 

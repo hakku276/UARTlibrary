@@ -42,7 +42,7 @@ void enqueue(struct Queue* queue, uint8_t data){
 #if(!SYMMETRIC_QUEUE)
 		if(queue->tail > queue->size){
 #else
-		if(queue->tail >QUEUE_SIZE){
+		if(queue->tail == QUEUE_SIZE){
 #endif
 			//the tail is out of the array
 			queue->tail = 0;
@@ -63,7 +63,7 @@ uint8_t dequeue(struct Queue* queue){
 #if(!SYMMETRIC_QUEUE)
 		if(queue->head > queue->size){
 #else
-		if(queue->head >QUEUE_SIZE){
+		if(queue->head == QUEUE_SIZE){
 #endif
 			//the tail is out of the array
 			queue->head = 0;

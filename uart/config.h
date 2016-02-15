@@ -36,6 +36,7 @@
 
 //Constant Values
 #define BAUD_RATE 9600U
+#define COMMAND_DATA_LENGTH 4
 
 /**
  * Allow the master or slave to request a repeat
@@ -58,7 +59,7 @@
  * The commands are specified in "commands.h" in the root folder and must specify some
  * specific constants.
  */
-#define COMMAND_RESPONSE_MODEL 0
+#define COMMAND_RESPONSE_MODEL 1
 
 /**
  * ONLY SLAVE SUPPORTED TILL NOW

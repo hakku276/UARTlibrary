@@ -17,11 +17,29 @@
 #include <avr/interrupt.h>
 #endif
 
+uint8_t size();
+
 #if USE_QUEUE
 #include "../utils/Queue.h"
 
 #if COMMAND_RESPONSE_MODEL
+
 #include "../commands.h"
+
+struct Command{
+	/**
+	 * The command code
+	 */
+	uint8_t commandCode;
+	/**
+	 * The maximum size the data can be
+	 */
+	uint8_t data[COMMAND_DATA_LENGTH];
+	/**
+	 * The size of this current data is
+	 */
+	uint8_t dataSize;
+};
 
 //check settings for command response model
 #if !(defined(COM_END) && defined(COM_WAIT))
@@ -45,7 +63,7 @@
  */
 void UARTsetup(
 #if COMMAND_RESPONSE_MODEL
-		void (*messageHandler)(uint8_t)
+		void (*messageHandler)(struct Command*)
 #endif
 #if (INTERRUPT_DRIVEN && (!USE_QUEUE))
 		void (*rxcCompleteHandler)(uint8_t),
@@ -62,7 +80,7 @@ void UARTsetup(
  */
 void advancedUARTsetup(
 #if COMMAND_RESPONSE_MODEL
-		void (*messageHandler)(uint8_t)
+		void (*messageHandler)(struct Command*)
 #endif
 #if (INTERRUPT_DRIVEN && (!USE_QUEUE))
 		void (*rxcCompleteHandler)(uint8_t),
@@ -125,6 +143,16 @@ void UARTresumeTransmission();
  * Pauses the Current transmission queue
  */
 void UARTholdTransmit();
+
+/**
+ * Fills data into the provided command data structure
+ */
+void fillData(struct Command* command);
+
+/**
+ * Defines a Standard message handler
+ */
+void standardMessageHandler();
 
 #endif
 
