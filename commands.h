@@ -28,9 +28,11 @@ uint8_t isCustomCommand(uint8_t data) {
  * ---------------------------
  */
 #define COM_ACK 0x01
-#define COM_WAIT 0x02
+#define COM_ESCAPE_CHAR 0x02
 #define COM_END 0x03
-#define COM_ESCAPE_CHAR 0x04
+#define COM_WAIT 0x04
+#define COM_RESUME 0x05
+#define COM_RESYNC_COMMAND_NUMBER 0x06
 
 /**
  * Verifies whether the byte is a standard command code or not

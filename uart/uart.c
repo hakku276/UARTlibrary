@@ -72,6 +72,8 @@ void UARTsetup(
 	UCSRB &= ~(1 << UCSZ2);
 	UCSRC |= (1 << UCSZ1 | 1 << UCSZ0);
 
+	incCommandNumber = 0;
+
 	//setup queue if queue is to be used
 #if USE_QUEUE
 	queueInit(&rxQueue);
@@ -189,29 +191,12 @@ uint8_t UARTreceive() {
 #endif
 }
 
-//TODO remove later
-
-uint8_t size() {
-	return rxQueue.count;
-}
-
 /**
  * ------------------------------------------------------
  * Interrupt Service Routine for UART reception complete
  * ------------------------------------------------------
  */
 #if INTERRUPT_DRIVEN
-
-/**
- * Global Variables required for UART
- */
-#if COMMAND_RESPONSE_MODEL
-/**
- * Holds a standard UART command that will be taken into consideration before the next transmission
- * TODO manage this
- */
-uint8_t status;
-#endif
 
 ISR(USART_RXC_vect) {
 
@@ -251,10 +236,17 @@ ISR(USART_RXC_vect) {
 		//try and transmit it until successful
 		//enable interrupt so that transmission can occur as planned
 		//first read data from UDR so as to clear RXC flag
-		//TODO manage resume functionality as well
-		while (!(UARTtransmit(COM_WAIT) == 1))
-			;
-		if(data == COM_END){
+		status |= COM_STATUS_TX_WAITING;
+
+		struct Command command;
+		initCommand(&command);
+
+		command.commandCode = COM_WAIT;
+		//todo put outgoing number
+		addCommandData(&command,incCommandNumber);
+		transmitCommandForced(&command);
+
+		if (data == COM_END) {
 			//The command has ended whatsoever
 			standardMessageHandler();
 		}
@@ -345,7 +337,7 @@ void UARTbeginTransmit() {
  * Builds the queue but does not transmit.
  * Returns whether the data was written or not
  */
-uint8_t UARTbuildCommandQueue(uint8_t data) {
+uint8_t UARTbuildTransmitQueue(uint8_t data) {
 	if (txQueue.count != txQueue.size) {
 		//tx queue is not full
 		enqueue(&txQueue, data);
@@ -365,33 +357,75 @@ uint8_t UARTbuildCommandQueue(uint8_t data) {
 void standardMessageHandler() {
 	uint8_t code = UARTreceive();
 	struct Command command;
+	initCommand(&command);
+
+#if USE_COMMAND_NUMBERING
+	uint8_t messageNumber = UARTreceive();
+
+	//verify message number first
+	if (messageNumber != incCommandNumber) {
+		//there was a mismatch in message validation
+		//reply with resync number
+		command.commandCode = COM_RESYNC_COMMAND_NUMBER;
+		addCommandData(&command,incCommandNumber);
+		//todo resync must specify incoming and outgoing command number
+		transmitCommand(&command);
+		notify(PROC_STATUS_COMPLETED);
+		return;
+	}
+#endif
+
+	//then start processing data
 	switch (code) {
 	case COM_WAIT:
 		status = COM_WAIT;
-		UARTbuildCommandQueue(COM_ACK);
-		UARTbuildCommandQueue(COM_END);
-		UARTbeginTransmit();
+		command.commandCode = COM_ACK;
+		//TODO add outgoing command number
+		transmitCommand(&command);
 		break;
 	default:
 		command.commandCode = code;
-		fillData(&command);
+		fillIncomingData(&command);
 		(*handler)(&command);
 		break;
 	}
+	notify(PROC_STATUS_COMPLETED);
 }
 
 /**
  * Fills data into the command structure from the rx queue
  * TODO verify data integrity
  */
-void fillData(struct Command* command){
+void fillIncomingData(struct Command* command) {
 	uint8_t data = UARTreceive();
 	uint8_t count = 0;
 	//TODO use ESCAPE SEQUENCE
-	while((data != COM_END) && (count < COMMAND_DATA_LENGTH)){
+	while ((data != COM_END) && (count < COMMAND_DATA_LENGTH)) {
 		command->data[count] = data;
 		data = UARTreceive();
 		count++;
+	}
+}
+
+/**
+ * Notify the process status of UART.
+ */
+void notify(uint8_t processStatus) {
+	if (processStatus == PROC_STATUS_COMPLETED) {
+		//incoming command number processing complete
+		incCommandNumber++;
+		//todo what to do at overflow
+		//the process status completed successfully
+		if (status & COM_STATUS_TX_WAITING) {
+			//if the communication channel is waiting request resume
+			UARTbuildTransmitQueue(COM_RESUME);
+			//TODO add command number to resume from
+			UARTbuildTransmitQueue(COM_END);
+			//TODO how to wait for an ack for this?
+			//using timers??
+			UARTbeginTransmit();
+			status &= ~COM_STATUS_TX_WAITING;
+		}
 	}
 }
 

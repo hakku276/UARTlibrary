@@ -26,20 +26,27 @@ uint8_t size();
 
 #include "../commands.h"
 
-struct Command{
-	/**
-	 * The command code
-	 */
-	uint8_t commandCode;
-	/**
-	 * The maximum size the data can be
-	 */
-	uint8_t data[COMMAND_DATA_LENGTH];
-	/**
-	 * The size of this current data is
-	 */
-	uint8_t dataSize;
-};
+#include "../utils/commandBuilder.h"
+
+#if INTERRUPT_DRIVEN
+/**
+ * Global Variables required for UART
+ */
+#if COMMAND_RESPONSE_MODEL
+/**
+ * Holds a standard UART command that will be taken into consideration before the next transmission
+ */
+uint8_t status;
+
+/**
+ * Holds the incoming command number
+ */
+uint8_t incCommandNumber;
+
+//TODO outgoing command number as well
+
+#endif
+#endif
 
 //check settings for command response model
 #if !(defined(COM_END) && defined(COM_WAIT))
@@ -56,7 +63,6 @@ struct Command{
 #endif
 
 #endif
-
 
 /**
  * simple UART setup
@@ -120,7 +126,7 @@ void UARTbeginTransmit();
  * Builds the queue but does not transmit.
  * Returns whether the data was written or not
  */
-uint8_t UARTbuildCommandQueue(uint8_t data);
+uint8_t UARTbuildTransmitQueue(uint8_t data);
 
 /**
  * Bulk Transmit data into the stream.
@@ -147,12 +153,17 @@ void UARTholdTransmit();
 /**
  * Fills data into the provided command data structure
  */
-void fillData(struct Command* command);
+void fillIncomingData(struct Command* command);
 
 /**
  * Defines a Standard message handler
  */
 void standardMessageHandler();
+
+/**
+ * Notifies the status of the message handling mechanism
+ */
+void notify(uint8_t);
 
 #endif
 

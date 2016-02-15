@@ -39,9 +39,9 @@
 #define COMMAND_DATA_LENGTH 4
 
 /**
- * Allow the master or slave to request a repeat
+ * Use Command Numbering Scheme
  */
-#define ALLOW_REPEAT_REQUESTS 0
+#define USE_COMMAND_NUMBERING 1
 
 /**
  * Define whether the queuing system should be used or not for communication
@@ -87,6 +87,16 @@
  * The hardware receiver has nothing to provide.
  */
 #define RX_BUSY 0x02
+
+/**
+ * Normal status of UART
+ */
+#define COM_STATUS_NORMAL 0x00
+
+/**
+ * The transmitting device is waiting for this device
+ */
+#define COM_STATUS_TX_WAITING 0x01
 
 #if USE_QUEUE
 
