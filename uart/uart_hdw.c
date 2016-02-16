@@ -106,7 +106,7 @@ ISR(USART_RXC_vect) {
 		//try and transmit it until successful
 		//enable interrupt so that transmission can occur as planned
 		//first read data from UDR so as to clear RXC flag
-		status |= COM_STATUS_TX_WAITING;
+		status |= COM_STATUS_PARTNER_WAITING;
 
 		struct Command command;
 		initCommand(&command);
@@ -142,7 +142,8 @@ ISR(USART_RXC_vect) {
 ISR(USART_TXC_vect) {
 	//enable interrupt for Data Register Empty
 #if COMMAND_RESPONSE_MODEL
-	if (status != COM_WAIT) {
+	//TODO not wait until this command has been completely transmitted
+	if (!(status & COM_STATUS_SELF_WAITING)) {
 		//if the communication stream has not sent wait signal
 #endif
 		UCSRB |= 1 << UDRIE;

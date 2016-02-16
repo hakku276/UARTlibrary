@@ -59,6 +59,7 @@ void UARTsetup(
 
 	//set the message handler if required
 #if COMMAND_RESPONSE_MODEL
+	status = 0;
 	handler = messageHandler;
 
 #if USE_COMMAND_NUMBERING
@@ -227,6 +228,7 @@ uint8_t UARTbuildTransmitQueue(uint8_t data) {
 
 /**
  * First level standard messages handler
+ * Do not forget to clear the com_end after every standard command
  */
 void standardMessageHandler() {
 	uint8_t code = UARTreceive();
@@ -237,8 +239,9 @@ void standardMessageHandler() {
 	uint8_t messageNumber = UARTreceive();
 
 	//verify message number first
-	if (messageNumber != incCommandNumber) {
-		//there was a mismatch in message validation
+	if ((messageNumber != incCommandNumber)
+			&& (command != COM_RESYNC_COMMAND_NUMBER)) {
+		//there was a mismatch in message validation and the message was not fur a resync
 		//reply with resync number
 		command.commandCode = COM_RESYNC_COMMAND_NUMBER;
 		addCommandData(&command, outCommandNumber);
@@ -251,12 +254,40 @@ void standardMessageHandler() {
 	//then start processing data
 	switch (code) {
 	case COM_WAIT:
-		status = COM_WAIT;
+		status |= COM_STATUS_SELF_WAITING;
 		command.commandCode = COM_ACK;
 #if USE_COMMAND_NUMBERING
-		addCommandData(&command,outCommandNumber);
+		addCommandData(&command, outCommandNumber);
 #endif
 		transmitCommand(&command);
+		//dequeue com_end from receive queue
+		UARTreceive();
+		break;
+		//TODO restart from the begining of this command not where it has been left or stop after a command is sent
+	case COM_RESUME:
+		//this device can't handle resume with some number but, we receive whichever number it has sent
+		//and then start our transmission
+		UARTbeginTransmit();
+		//dequeue com_end from receive queue
+		UARTreceive();
+		break;
+		//TODO handle COM_ACK
+	case COM_ACK:
+		if (status & COM_STATUS_WAITING_ACK) {
+			//todo determine what was waiting for an ack and do something
+		} else {
+			// not waiting for an ack so forward it to the custom message handler
+			command.commandCode = code;
+			fillIncomingData(&command);
+			(*handler)(&command);
+		}
+		break;
+		//TODO handle COM_RESYNC_COMMAND_NUMBER
+	case COM_RESYNC_COMMAND_NUMBER:
+		incCommandNumber = messageNumber;
+		outCommandNumber = UARTreceive();
+		//clear com_end from the queue
+		UARTreceive();
 		break;
 	default:
 		command.commandCode = code;
@@ -293,20 +324,20 @@ void notify(uint8_t processStatus) {
 #endif
 		//todo what to do at overflow
 		//the process status completed successfully
-		if (status & COM_STATUS_TX_WAITING) {
+		if (status & COM_STATUS_PARTNER_WAITING) {
 			struct Command command;
 			initCommand(&command);
 			//if the communication channel is waiting request resume
 			command.commandCode = COM_RESUME;
 #if USE_COMMAND_NUMBERING
-			addCommandData(&command,outCommandNumber);
-			addCommandData(&command,incCommandNumber);
+			addCommandData(&command, outCommandNumber);
+			addCommandData(&command, incCommandNumber);
 #endif
 			transmitCommandForced(&command);
 			//TODO how to wait for an ack for this?
 			//using timers??
 			UARTbeginTransmit();
-			status &= ~COM_STATUS_TX_WAITING;
+			status &= ~COM_STATUS_PARTNER_WAITING;
 		}
 	}
 }

@@ -94,9 +94,19 @@
 #define COM_STATUS_NORMAL 0x00
 
 /**
- * The transmitting device is waiting for this device
+ * The partner device is waiting for this device
  */
-#define COM_STATUS_TX_WAITING 0x01
+#define COM_STATUS_PARTNER_WAITING 0x01
+
+/**
+ * This device is waiting for partner device
+ */
+#define COM_STATUS_SELF_WAITING 0x02
+
+/**
+ * This device is waiting for an acknowledgement
+ */
+#define COM_STATUS_WAITING_ACK 0x04
 
 #if USE_QUEUE
 

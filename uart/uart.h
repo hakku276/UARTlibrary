@@ -71,6 +71,7 @@ Queue rxQueue, txQueue;
 
 /**
  * simple UART setup
+ * NOTE: the message handler should not dequeue the command end from the device
  */
 void UARTsetup(
 #if COMMAND_RESPONSE_MODEL
