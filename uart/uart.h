@@ -14,45 +14,50 @@
 #include "uart_hdw.h"
 
 #if (INTERRUPT_DRIVEN)
-#include <avr/interrupt.h>
-#endif
 
-uint8_t size();
-
-#if USE_QUEUE
-#include "../utils/Queue.h"
-
+/**
+ * Global Variables required for UART when using interrupt mode
+ */
 #if COMMAND_RESPONSE_MODEL
 
 #include "../commands.h"
 
 #include "../utils/commandBuilder.h"
 
-#if INTERRUPT_DRIVEN
-/**
- * Global Variables required for UART
- */
-#if COMMAND_RESPONSE_MODEL
-/**
- * Holds a standard UART command that will be taken into consideration before the next transmission
- */
-uint8_t status;
-
-/**
- * Holds the incoming command number
- */
-uint8_t incCommandNumber;
-
-//TODO outgoing command number as well
-
-#endif
-#endif
-
 //check settings for command response model
 #if !(defined(COM_END) && defined(COM_WAIT))
 #error 'Required Commands not defined for Command Oriented Communication'
 #endif
 
+/**
+ * Holds a standard UART command that will be taken into consideration before the next transmission
+ */
+uint8_t status;
+
+#endif
+
+#if USE_COMMAND_NUMBERING
+/**
+ * Holds the incoming command number
+ */
+uint8_t incCommandNumber;
+
+/**
+ * Holds the outgoing commad number
+ */
+uint8_t outCommandNumber;
+
+#endif
+
+#endif
+
+#if USE_QUEUE
+#include "../utils/Queue.h"
+
+typedef struct Queue Queue;
+Queue rxQueue, txQueue;
+
+#if COMMAND_RESPONSE_MODEL
 #endif
 #else
 

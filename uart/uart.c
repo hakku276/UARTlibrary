@@ -10,20 +10,11 @@
 #include "../commands.h"
 #endif
 
-#if USE_QUEUE
-typedef struct Queue Queue;
-Queue rxQueue, txQueue;
-
 #if COMMAND_RESPONSE_MODEL
 /**
- * NOTE: short reminder
- * void *(*ptr)();
- * ptr = &function;
- * (*ptr)();
+ * A custom message handler
  */
 void (*handler)(struct Command*);
-#endif
-
 #endif
 
 /**
@@ -58,21 +49,8 @@ void UARTsetup(
 		void (*txcCompleteHandler)()
 #endif
 		) {
-	//setup Baud rate
-	UBRRH = UBRR_VAL >> 8;
-	UBRRL = UBRR_VAL;
-
-	//setup the rx and tx pin
-	UCSRB |= (1 << RXEN | 1 << TXEN);
-
-	//setup parity to disabled and stop bits to 1
-	UCSRC &= ~(1 << UPM1 | 1 << UPM0 | 1 << USBS);
-
-	//setup frame size to 8 bits
-	UCSRB &= ~(1 << UCSZ2);
-	UCSRC |= (1 << UCSZ1 | 1 << UCSZ0);
-
-	incCommandNumber = 0;
+	//setup hardware first
+	hdwUARTSetup();
 
 	//setup queue if queue is to be used
 #if USE_QUEUE
@@ -82,13 +60,12 @@ void UARTsetup(
 	//set the message handler if required
 #if COMMAND_RESPONSE_MODEL
 	handler = messageHandler;
-#endif
 
+#if USE_COMMAND_NUMBERING
+	incCommandNumber = 0;
+	outCommandNumber = 0;
 #endif
-	//enable interrupt driven architecture if required
-#if INTERRUPT_DRIVEN
-	//enable interrupt
-	UCSRB |= 1 << RXCIE | 1 << TXCIE;
+#endif
 #endif
 
 	//enable callback methods if there is interrupt enabled but not queuing is used
@@ -190,109 +167,6 @@ uint8_t UARTreceive() {
 	return hdwReceiveUART();
 #endif
 }
-
-/**
- * ------------------------------------------------------
- * Interrupt Service Routine for UART reception complete
- * ------------------------------------------------------
- */
-#if INTERRUPT_DRIVEN
-
-ISR(USART_RXC_vect) {
-
-	//read the received data even though it might be lost
-	uint8_t data = hdwReceiveUART();
-
-#if USE_QUEUE
-
-	uint8_t uartStatus = UARTstatus();
-
-	//using queue so enqueue into queue
-	if (!(uartStatus & RX_QUEUE_FULL)) {
-
-		//enqueue data in every case
-		enqueue(&rxQueue, data);
-#if (!COMMAND_RESPONSE_MODEL)
-		//command response mode is not implemented  but queue is used
-		//so notify the user program that the queue is full
-		uartStatus = UARTstatus();
-		if(uartStatus & RX_QUEUE_FULL) {
-			(*rxcHandler)();
-		}
-#endif
-
-		//if this is command response model check for command endpoints
-#if COMMAND_RESPONSE_MODEL
-		//TODO supposition of no escape sequence key
-		if (data == COM_END) {
-			//the command ended invoke the standard message handler
-			standardMessageHandler();
-		}
-#endif
-	}
-#if COMMAND_RESPONSE_MODEL
-	else {
-		//RX queue is full transmit WAIT command
-		//try and transmit it until successful
-		//enable interrupt so that transmission can occur as planned
-		//first read data from UDR so as to clear RXC flag
-		status |= COM_STATUS_TX_WAITING;
-
-		struct Command command;
-		initCommand(&command);
-
-		command.commandCode = COM_WAIT;
-		//todo put outgoing number
-		addCommandData(&command,incCommandNumber);
-		transmitCommandForced(&command);
-
-		if (data == COM_END) {
-			//The command has ended whatsoever
-			standardMessageHandler();
-		}
-	}
-#endif
-#else
-	// not using queue
-	(*rxcHandler)(data);
-#endif
-}
-
-/**
- * Interrupt Service Routine for UART Data transmission complete
- */
-ISR(USART_TXC_vect) {
-	//enable interrupt for Data Register Empty
-#if COMMAND_RESPONSE_MODEL
-	if (status != COM_WAIT) {
-		//if the communication stream has not sent wait signal
-#endif
-		UCSRB |= 1 << UDRIE;
-#if COMMAND_RESPONSE_MODEL
-	}
-#endif
-}
-
-/**
- * Interrupt Service Routine for UDRE. write data only if the UDR is ready to receive data
- */
-ISR(USART_UDRE_vect) {
-#if USE_QUEUE
-	uint8_t uartStatus = UARTstatus();
-	//using queue so dequeue from queue
-	if (!(uartStatus & TX_QUEUE_EMPTY)) {
-		//there is data remaining to be transmitted
-		hdwTransmitUART(dequeue(&txQueue));
-	}
-#else
-	//not using queue so notify user that the rxc was completed
-	(*txcHandler)();
-#endif
-	//disable UDR empty interrupt
-	UCSRB &= ~(1 << UDRIE);
-}
-#endif
-
 /**
  * The following code base is implemented if a Queue is to be implemented
  */
@@ -367,10 +241,9 @@ void standardMessageHandler() {
 		//there was a mismatch in message validation
 		//reply with resync number
 		command.commandCode = COM_RESYNC_COMMAND_NUMBER;
-		addCommandData(&command,incCommandNumber);
-		//todo resync must specify incoming and outgoing command number
+		addCommandData(&command, outCommandNumber);
+		addCommandData(&command, incCommandNumber);
 		transmitCommand(&command);
-		notify(PROC_STATUS_COMPLETED);
 		return;
 	}
 #endif
@@ -380,7 +253,9 @@ void standardMessageHandler() {
 	case COM_WAIT:
 		status = COM_WAIT;
 		command.commandCode = COM_ACK;
-		//TODO add outgoing command number
+#if USE_COMMAND_NUMBERING
+		addCommandData(&command,outCommandNumber);
+#endif
 		transmitCommand(&command);
 		break;
 	default:
@@ -394,16 +269,16 @@ void standardMessageHandler() {
 
 /**
  * Fills data into the command structure from the rx queue
- * TODO verify data integrity
+ * TODO verify data integrity using escape sequencing
  */
 void fillIncomingData(struct Command* command) {
 	uint8_t data = UARTreceive();
-	uint8_t count = 0;
+	command->dataSize = 0;
 	//TODO use ESCAPE SEQUENCE
-	while ((data != COM_END) && (count < COMMAND_DATA_LENGTH)) {
-		command->data[count] = data;
+	while ((data != COM_END) && (command->dataSize < COMMAND_DATA_LENGTH)) {
+		command->data[command->dataSize] = data;
 		data = UARTreceive();
-		count++;
+		command->dataSize++;
 	}
 }
 
@@ -413,14 +288,21 @@ void fillIncomingData(struct Command* command) {
 void notify(uint8_t processStatus) {
 	if (processStatus == PROC_STATUS_COMPLETED) {
 		//incoming command number processing complete
+#if USE_COMMAND_NUMBERING
 		incCommandNumber++;
+#endif
 		//todo what to do at overflow
 		//the process status completed successfully
 		if (status & COM_STATUS_TX_WAITING) {
+			struct Command command;
+			initCommand(&command);
 			//if the communication channel is waiting request resume
-			UARTbuildTransmitQueue(COM_RESUME);
-			//TODO add command number to resume from
-			UARTbuildTransmitQueue(COM_END);
+			command.commandCode = COM_RESUME;
+#if USE_COMMAND_NUMBERING
+			addCommandData(&command,outCommandNumber);
+			addCommandData(&command,incCommandNumber);
+#endif
+			transmitCommandForced(&command);
 			//TODO how to wait for an ack for this?
 			//using timers??
 			UARTbeginTransmit();

@@ -44,6 +44,10 @@ void transmitCommand(struct Command* command) {
 	}
 	UARTbuildTransmitQueue(COM_END);
 	UARTbeginTransmit();
+	//increment command number after this
+#if USE_COMMAND_NUMBERING
+	outCommandNumber++;
+#endif
 }
 
 /**
@@ -58,4 +62,8 @@ void transmitCommandForced(struct Command* command) {
 	}
 	while (!(UARTtransmit(COM_END) == 1))
 		;
+	//increment command number after this
+#if USE_COMMAND_NUMBERING
+	outCommandNumber++;
+#endif
 }
