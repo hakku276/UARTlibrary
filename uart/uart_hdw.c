@@ -42,7 +42,6 @@ void hdwUARTSetup() {
  */
 uint8_t hdwIsBusyUART() {
 	uint8_t result = 0x00;
-	//TODO incorrect shit
 	if(hardwareStatus & HDW_STATUS_TRANSMITTING){
 		result |= TX_BUSY;
 	}

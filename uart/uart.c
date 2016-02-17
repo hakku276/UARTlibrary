@@ -137,6 +137,12 @@ uint8_t UARTstatus() {
  */
 uint8_t UARTtransmit(uint8_t data) {
 #if USE_QUEUE
+#if USE_COMMAND_NUMBERING
+	if(status & COM_STATUS_SELF_WAITING){
+		//this device is waiting and not transmitting
+		return 0;
+	}
+#endif
 	uint8_t uartStatus = UARTstatus();
 	if (!(uartStatus & TX_QUEUE_FULL)) {
 		//tx queue is not full
@@ -263,15 +269,14 @@ void standardMessageHandler() {
 		//dequeue com_end from receive queue
 		UARTreceive();
 		break;
-		//TODO restart from the begining of this command not where it has been left or stop after a command is sent
 	case COM_RESUME:
 		//this device can't handle resume with some number but, we receive whichever number it has sent
 		//and then start our transmission
+		status &= ~COM_STATUS_SELF_WAITING;
 		UARTbeginTransmit();
 		//dequeue com_end from receive queue
 		UARTreceive();
 		break;
-		//TODO handle COM_ACK
 	case COM_ACK:
 		if (status & COM_STATUS_WAITING_ACK) {
 			//todo determine what was waiting for an ack and do something
