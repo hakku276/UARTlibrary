@@ -23,6 +23,8 @@
 #include "../utils/Queue.h"
 #endif
 
+#define HDW_STATUS_TRANSMITTING 0x01
+
 void hdwUARTSetup();
 
 /**

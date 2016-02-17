@@ -240,7 +240,7 @@ void standardMessageHandler() {
 
 	//verify message number first
 	if ((messageNumber != incCommandNumber)
-			&& (command != COM_RESYNC_COMMAND_NUMBER)) {
+			&& (code != COM_RESYNC_COMMAND_NUMBER)) {
 		//there was a mismatch in message validation and the message was not fur a resync
 		//reply with resync number
 		command.commandCode = COM_RESYNC_COMMAND_NUMBER;
@@ -254,7 +254,7 @@ void standardMessageHandler() {
 	//then start processing data
 	switch (code) {
 	case COM_WAIT:
-		status |= COM_STATUS_SELF_WAITING;
+		status |= COM_STATUS_REQUEST_SELF_WAIT;
 		command.commandCode = COM_ACK;
 #if USE_COMMAND_NUMBERING
 		addCommandData(&command, outCommandNumber);
@@ -282,7 +282,6 @@ void standardMessageHandler() {
 			(*handler)(&command);
 		}
 		break;
-		//TODO handle COM_RESYNC_COMMAND_NUMBER
 	case COM_RESYNC_COMMAND_NUMBER:
 		incCommandNumber = messageNumber;
 		outCommandNumber = UARTreceive();

@@ -104,9 +104,14 @@
 #define COM_STATUS_SELF_WAITING 0x02
 
 /**
+ * Request a self wait, results in a waiting after this device has completed transmission of this command
+ */
+#define COM_STATUS_REQUEST_SELF_WAIT 0x04
+
+/**
  * This device is waiting for an acknowledgement
  */
-#define COM_STATUS_WAITING_ACK 0x04
+#define COM_STATUS_WAITING_ACK 0x08
 
 #if USE_QUEUE
 
