@@ -113,6 +113,11 @@
  */
 #define COM_STATUS_WAITING_ACK 0x08
 
+/**
+ * This device transmitter is busy
+ */
+#define COM_STATUS_TRANSMITTING 0x10
+
 #if USE_QUEUE
 
 /**

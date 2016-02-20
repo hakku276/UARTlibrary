@@ -7,8 +7,6 @@
 
 #include "uart_hdw.h"
 
-uint8_t hardwareStatus;
-
 /**
  * Setup the UART hardware
  */
@@ -32,7 +30,6 @@ void hdwUARTSetup() {
 	//enable interrupt
 	UCSRB |= 1 << RXCIE | 1 << TXCIE;
 
-	hardwareStatus = 0x00;
 #endif
 }
 
@@ -42,7 +39,8 @@ void hdwUARTSetup() {
  */
 uint8_t hdwIsBusyUART() {
 	uint8_t result = 0x00;
-	if(hardwareStatus & HDW_STATUS_TRANSMITTING){
+	//determine if the TX is busy or not
+	if(status & COM_STATUS_TRANSMITTING){
 		result |= TX_BUSY;
 	}
 	if (!(UCSRA & (1 << RXC))) {
@@ -61,8 +59,8 @@ uint8_t hdwIsBusyUART() {
  * Transmit data directly on the hardware
  */
 inline void hdwTransmitUART(uint8_t data) {
-	if(!(hardwareStatus & HDW_STATUS_TRANSMITTING)){
-		hardwareStatus |= HDW_STATUS_TRANSMITTING;
+	if(!(status & COM_STATUS_TRANSMITTING)){
+		status |= COM_STATUS_TRANSMITTING;
 	}
 	if(UCSRA & (1<<UDRE)){
 		UDR = data;
@@ -149,7 +147,7 @@ ISR(USART_RXC_vect) {
  */
 ISR(USART_TXC_vect) {
 	//enable interrupt for Data Register Empty
-	hardwareStatus &= ~HDW_STATUS_TRANSMITTING;
+	status &= ~COM_STATUS_TRANSMITTING;
 #if COMMAND_RESPONSE_MODEL
 	//TODO not wait until this command has been completely transmitted
 	if(status & COM_STATUS_REQUEST_SELF_WAIT){

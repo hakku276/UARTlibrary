@@ -30,7 +30,7 @@
 #endif
 
 /**
- * Holds a standard UART command that will be taken into consideration before the next transmission
+ * Holds the status of the UART and will be used for determining the next move of the transmission
  */
 uint8_t status;
 

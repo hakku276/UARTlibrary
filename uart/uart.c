@@ -18,7 +18,7 @@ void (*handler)(struct Command*);
 #endif
 
 /**
- * Require callbacks if not using queues
+ * Required callbacks if not using queues
  */
 #if (INTERRUPT_DRIVEN && (!USE_QUEUE))
 void (*rxcHandler)(uint8_t);
@@ -207,8 +207,8 @@ uint8_t UARTbulkTransmit(uint8_t* data, uint8_t start, uint8_t length) {
  * Initiate transmission the data from the queue.
  */
 void UARTbeginTransmit() {
-	uint8_t status = UARTstatus();
-	if ((!(status & TX_BUSY)) && (txQueue.count != 0)) {
+	uint8_t uartStatus = UARTstatus();
+	if ((!(uartStatus & TX_BUSY)) && (txQueue.count != 0)) {
 		//the transmitter is not busy and there is data to be transmitted
 		hdwTransmitUART(dequeue(&txQueue));
 	}
